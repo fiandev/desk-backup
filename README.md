@@ -28,7 +28,7 @@ Do this **only once** to start your backup.
 1. **Run the Installer:** Open a terminal in that directory and run the setup script.
 
     ```bash
-    curl -sL https://github.com/desk-backup.sh/install | bash
+    curl -sL https://github.com/desk-backup/install | bash
     ```
 2.  **Follow Instructions:** The script will ask for the repository URL you created in step 1. Enter the URL, and the script will configure everything automatically.
 3.  **Reload Your Shell:** After the setup is complete, reload your shell configuration to activate the aliases.
@@ -69,8 +69,8 @@ After the setup is complete, you can use the following aliases in your terminal.
 
 ## 📂 File Structure
 
--   **`desk.sh`**: The core script containing all logic. It should be placed in a directory in your `$PATH` (e.g., `~/.local/bin`) for the aliases to work. The setup script handles this.
--   **`setup-desk-tool.sh`**: The interactive installer for the initial setup on your main machine.
+-   **`deskbackup`**: The core script containing all logic. It should be placed in a directory in your `$PATH` (e.g., `~/.local/bin`) for the aliases to work. The setup script handles this.
+-   **`install`**: The interactive installer for the initial setup on your main machine.
 -   **`aliases.sh`**: Your collection of custom aliases that will be sourced by `.bashrc`.
 -   **`README.md`**: This file.
 
