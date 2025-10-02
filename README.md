@@ -22,37 +22,40 @@ A special alias (`dotfiles`) is used to interact with this repository, pointing 
 
 The process is divided into two parts: setting up on your main machine, and recovering on a new one.
 
-### A. Initial Setup (On Your Main Machine)
+### Initial Setup
 
-Do this **only once** to start your backup.
-1. **Run the Installer:** Open a terminal in that directory and run the setup script.
+1.  **Ensure Git is installed:**
+    check [this](https://git-scm.com/downloads) to install git on your device
+
+2. **Run the Installer:** 
+    Open a terminal in that directory and run the setup script.
+
+    Do this **only once** to start your backup. This is the step to restore all your settings.
+
 
     ```bash
     curl -sL https://github.com/desk-backup/install | bash
     ```
-2.  **Follow Instructions:** The script will ask for the repository URL you created in step 1. Enter the URL, and the script will configure everything automatically.
-3.  **Reload Your Shell:** After the setup is complete, reload your shell configuration to activate the aliases.
+3.  **Follow Instructions:** 
+    The script will ask for the repository URL you created in step 1. Enter the URL, and the script will configure everything automatically.
+
+4.  **Reload Your Shell:** 
+    After the setup is complete, reload your shell configuration to activate the aliases.
     ```bash
     source ~/.bashrc
     ```
-4.  **First Backup:** Start adding your important configuration files.
-    ```bash
-    desk-backup ~/.bashrc ~/.zshrc ~/.gitconfig ~/.config/htop
-    ```
-
-### B. Recovery (On a New Machine or After Reinstall)
-
-This is the step to restore all your settings.
-
-1.  **Ensure Git is installed:**
-    ```bash
-    sudo dnf install git
-    ```
-2.  **Run the `desk-import` Command:**
+5.  **Run the `desk-import` Command:**
     ```bash
     desk-import 
     # or
     deskbackup import
+    ```
+
+6.  **First Backup:** 
+    Start adding your important configuration files.
+
+    ```bash
+    desk-backup ~/.bashrc ~/.zshrc ~/.gitconfig ~/.config/htop
     ```
 
 ## 🛠️ Command List
