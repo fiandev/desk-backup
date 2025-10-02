@@ -1,11 +1,13 @@
-# Desk-Tool: A Linux Desktop Configuration Backup & Restore System
+# Desk-Backup
+
+## A Linux Desktop Configuration Backup & Restore System
 
 A super shell scripts to automatically back up, restore, and sync a Linux desktop configuration (dotfiles, applications, and more) using Git. Designed to speed up the setup process on a new machine or after a fresh OS install.
 
 ## ✨ Features
 
 -   **Application List Backup:** Saves a list of installed applications from DNF and Flatpak.
--   **Dotfiles Management with Git:** Uses the efficient "Git Bare Repository" method to track individual configuration files across the home directory.
+-   **File Backup Management with Git:** Uses the efficient "Git Bare Repository" method to track individual configuration files across the home directory.
 -   **Smart Setup Process:** Includes an interactive setup script for initial configuration.
 -   **One-Shot Restore:** A single command to restore the entire work environment on a new machine.
 -   **Memorable Aliases:** Short commands (`desk-backup`, `desk-import`, etc.) for daily operations.
@@ -23,22 +25,17 @@ The process is divided into two parts: setting up on your main machine, and reco
 ### A. Initial Setup (On Your Main Machine)
 
 Do this **only once** to start your backup.
+1. **Run the Installer:** Open a terminal in that directory and run the setup script.
 
-1.  **Create an Empty Repository:** Create a new, empty (and preferably private) Git repository on GitHub, GitLab, or another Git service.
-2.  **Prepare the Files:**
-    * Place the `setup-desk-tool.sh` and `desk.sh` scripts in a directory.
-    * Create an `aliases.sh` file in the same directory with your desired aliases.
-3.  **Run the Installer:** Open a terminal in that directory and run the setup script.
     ```bash
-    chmod +x setup-desk-tool.sh
-    ./setup-desk-tool.sh
+    curl -sL https://github.com/desk-backup.sh/install | bash
     ```
-4.  **Follow Instructions:** The script will ask for the repository URL you created in step 1. Enter the URL, and the script will configure everything automatically.
-5.  **Reload Your Shell:** After the setup is complete, reload your shell configuration to activate the aliases.
+2.  **Follow Instructions:** The script will ask for the repository URL you created in step 1. Enter the URL, and the script will configure everything automatically.
+3.  **Reload Your Shell:** After the setup is complete, reload your shell configuration to activate the aliases.
     ```bash
     source ~/.bashrc
     ```
-6.  **First Backup:** Start adding your important configuration files.
+4.  **First Backup:** Start adding your important configuration files.
     ```bash
     desk-backup ~/.bashrc ~/.zshrc ~/.gitconfig ~/.config/htop
     ```
@@ -52,13 +49,11 @@ This is the step to restore all your settings.
     sudo dnf install git
     ```
 2.  **Run the `desk-import` Command:**
-    Use `curl` or `wget` to download the `desk.sh` script from your repository and execute it directly with the `import` argument.
-
     ```bash
-    # Replace with the RAW URL of the desk.sh file in your repo
-    bash -c "$(curl -fsSL [https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/desk.sh](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/desk.sh))" import
+    desk-import 
+    # or
+    deskbackup import
     ```
-    The script will ask for confirmation, then automatically clone the dotfiles, place the configuration files, add the aliases to `.bashrc`, and install all applications from your backup list.
 
 ## 🛠️ Command List
 
