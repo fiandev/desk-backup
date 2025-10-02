@@ -1,0 +1,265 @@
+#!/bin/bash
+
+# ==============================================================================
+# DESK-TOOL: A Git-based Desktop Configuration Backup & Recovery Script
+# ==============================================================================
+
+# --- CONFIGURATION (REQUIRED) ---
+# Replace with the URL of your bare Git repository on GitHub/GitLab.
+# Example: "git@github.com:fiandev/desktop-backup.git"
+CONFIG_REPO="$HOME/.deskbackup-config"
+
+# --- INTERNAL LOCATIONS ---
+# Location to store the bare git repository
+DOTFILES_DIR="$HOME/.dotfiles"
+
+# Location to store non-git backup files (like package lists)
+BACKUP_DIR="$HOME/.local/share/desk-backup"
+DATA_CONFIG_FILE="$(dirname -- "${BASH_SOURCE[0]}")/backup-folders.conf"
+
+mkdir -p "$BACKUP_DIR"
+
+# --- INTERNAL GIT ALIAS ---
+# This command is the core of everything, linking the bare repo to the home directory
+dotfiles() {
+    /usr/bin/git --git-dir="$DOTFILES_DIR" --work-tree="$HOME" "$@"
+}
+
+# ==============================================================================
+# MAIN FUNCTIONS
+# ==============================================================================
+
+fn_restore_data_folders() {
+    echo "🗂️  Starting data folder restore with rsync..."
+    if [[ "$DATA_BACKUP_DESTINATION" == "/path/to/your/external/drive/or/nas" ]]; then
+        echo "⚠️  WARNING: DATA_BACKUP_DESTINATION is not set. Skipping rsync restore."
+        return
+    fi
+
+    if [ ! -f "$DATA_CONFIG_FILE" ]; then
+        echo "⚠️  WARNING: Config file '$DATA_CONFIG_FILE' not found. Skipping rsync restore."
+        return
+    fi
+
+    # Baca setiap baris, ekstrak nama folder, dan jalankan rsync dari backup ke home
+    while IFS= read -r folder_path || [[ -n "$folder_path" ]]; do
+        local folder_name=$(basename "$folder_path")
+        local source_path="$DATA_BACKUP_DESTINATION/$folder_name"
+        
+        if [ -d "$source_path" ]; then
+            echo "   -> Restoring $folder_name to $HOME..."
+            rsync -avh "$source_path/" "$HOME/$folder_name/"
+        else
+            echo "   -> Warning: Backup folder '$source_path' does not exist. Skipping."
+        fi
+    done < "$DATA_CONFIG_FILE"
+    echo "✅ rsync restore complete."
+}
+
+# --- FUNCTION: desk-import ---
+# To be run on a new machine. Clones the repo and restores everything.
+fn_import() {
+    local REPO_URL=$(cat $CONFIG_REPO)
+    
+    echo "--- Starting Full System Import ---"
+
+    if [ -d "$DOTFILES_DIR" ]; then
+        # echo "⚠️ WARNING: A '.dotfiles' directory already exists. Aborting to prevent overwrite."
+        # echo "   If this is a mistake, please remove it first with 'rm -rf ~/.dotfiles'"
+        rm -rf $DOTFILES_DIR;
+        exit 1
+    fi
+
+    # Jika URL tidak diberikan sebagai argumen, minta secara interaktif.
+    if [[ -z "$REPO_URL" ]]; then
+        while [[ -z "$REPO_URL" ]]; do
+            read -p "Please enter the SSH or HTTPS URL for your dotfiles repository: " REPO_URL
+            if [[ -z "$REPO_URL" ]]; then
+                echo "❌ Repository URL cannot be empty. Please try again."
+            fi
+        done
+    fi
+
+    echo "🚚 Cloning dotfiles from '$REPO_URL'..."
+    # Lakukan clone menggunakan URL yang sudah didapatkan
+    git clone --bare "$REPO_URL" "$DOTFILES_DIR"
+    if [ $? -ne 0 ]; then
+        echo "❌ ERROR: Failed to clone repository. Please check the URL and your permissions (SSH keys)."
+        exit 1
+    fi
+
+    echo "⚙️ Checking out configuration files to home directory..."
+    dotfiles checkout -f
+    
+    if [ $? = 0 ]; then
+        echo "✅ Checkout successful."
+    else
+        echo "⚠️ WARNING: Checkout failed even with --force. There might be an issue with the repository."
+    fi
+    
+    dotfiles config --local status.showUntrackedFiles no
+    echo "👍 Basic setup complete. Starting recovery of apps and settings..."
+    
+    # Panggil fungsi recovery untuk menginstall aplikasi dan memuat alias
+    fn_recovery
+    
+    # Tambahkan alias ke .bashrc secara otomatis
+    local ALIAS_FILE
+    ALIAS_FILE=$(dotfiles ls-tree -r HEAD --name-only | grep -m 1 "aliases.sh")
+    if [[ -n "$ALIAS_FILE" ]]; then
+        local FULL_ALIAS_PATH="$HOME/$ALIAS_FILE"
+        local SOURCE_LINE="source $FULL_ALIAS_PATH"
+        if ! grep -qFx "$SOURCE_LINE" ~/.bashrc; then
+            echo -e "\n# Load Desk-Tool aliases" >> ~/.bashrc
+            echo "$SOURCE_LINE" >> ~/.bashrc
+            echo "✅ Alias source line added to ~/.bashrc. Please run 'source ~/.bashrc'."
+        fi
+    fi
+}
+
+# --- FUNCTION: desk-recovery ---
+# Restores files from git and reinstalls applications from the list.
+fn_recovery() {
+    echo "🔄 Restoring tracked files from Git..."
+    dotfiles checkout -f
+
+    echo "📦 Restoring applications from the backup list..."
+    if [ -f "$BACKUP_DIR/packages-dnf.txt" ]; then
+        echo "Fedora (DNF): Installing packages..."
+        sudo dnf install -y $(cat "$BACKUP_DIR/packages-dnf.txt")
+    else
+        echo "DNF package list file not found."
+    fi
+    
+    if [ -f "$BACKUP_DIR/packages-flatpak.txt" ]; then
+        echo "Flatpak: Installing applications..."
+        xargs -a "$BACKUP_DIR/packages-flatpak.txt" -r flatpak install -y
+    else
+        echo "Flatpak application list file not found."
+    fi
+
+    echo "✅ Recovery process complete."
+}
+
+# --- FUNCTION: desk-backup ---
+# Adds files/folders to Git, commits, and pushes.
+fn_backup() {
+    if [ $# -eq 0 ]; then
+        echo "Usage: desk-backup <path/file1> <path/folder2> ..."
+        exit 1
+    fi
+    
+    echo "📋 Adding new entries to Git tracking: $@"
+    dotfiles add "$@"
+    
+    echo "📝 Creating commit..."
+    dotfiles commit -m "feat: track $(basename "$@")"
+    
+    echo "🚀 Pushing changes to remote repository..."
+    dotfiles push
+
+    # Always back up the package list every time a file is backed up
+    echo "📦 Backing up the latest application list..."
+    dnf repoquery --userinstalled --qf '%{name}' > "$BACKUP_DIR/packages-dnf.txt"
+    flatpak list --app --columns=application > "$BACKUP_DIR/packages-flatpak.txt"
+    dotfiles add "$BACKUP_DIR"
+    dotfiles commit -m "chore: update package lists"
+    dotfiles pull origin master --rebase
+    dotfiles push --set-upstream origin master
+
+    echo "✅ Backup successful."
+}
+
+# --- FUNCTION: desk-ignore ---
+# Stops tracking a file, but the file remains on the disk.
+fn_ignore() {
+    if [ $# -eq 0 ]; then
+        echo "Usage: desk-ignore <path/file>"
+        exit 1
+    fi
+
+    echo "🙈 Stop tracking file (without deleting from disk): $@"
+    dotfiles rm --cached -r "$@"
+    dotfiles commit -m "refactor: ignore $(basename "$@")"
+    dotfiles pull origin master --rebase
+    dotfiles push --set-upstream origin master
+        
+    echo "✅ File is no longer tracked by Git."
+}
+
+# --- FUNCTION: desk-remove ---
+# Deletes a file from the disk & history (safe & advanced versions).
+fn_remove() {
+    if [ $# -eq 0 ]; then
+        echo "Usage: desk-remove <path/file>"
+        exit 1
+    fi
+    
+    echo "🗑️ Removing file from disk and Git tracking: $@"
+    dotfiles rm -r "$@"
+    dotfiles commit -m "feat: remove $(basename "$@")"
+    dotfiles pull origin master --rebase
+    dotfiles push --set-upstream origin master
+
+    echo "✅ File has been deleted. Its history prior to deletion still exists in Git."
+    echo "   To completely purge from history (advanced), use 'desk-remove --purge-history <path/file>'"
+}
+
+fn_purge_history() {
+    echo "⚠️⚠️⚠️ CRITICAL WARNING ⚠️⚠️⚠️"
+    echo "You are about to remove a file from the ENTIRE Git history. This is a dangerous operation,"
+    echo "it rewrites history, and requires a 'force push'."
+    echo "Using the 'git filter-repo' tool is recommended."
+    read -p "Are you absolutely sure? (type 'yes' to continue): " confirmation
+    if [[ "$confirmation" != "yes" ]]; then
+        echo "Operation cancelled."
+        exit 1
+    fi
+
+    echo "🔥 Purging '$2' from the entire history..."
+    # Make sure git-filter-repo is installed: sudo dnf install git-filter-repo
+    dotfiles filter-repo --path "$2" --invert-paths --force
+    
+    echo "🚀 Force pushing to rewrite history on the remote repository..."
+    dotfiles push --force
+    echo "✅ History has been rewritten."
+}
+
+
+# ==============================================================================
+# MAIN ROUTER (SUBCOMMAND HANDLING)
+# ==============================================================================
+
+COMMAND=$1
+shift # Remove the first argument so the rest can be passed to the functions
+
+case $COMMAND in
+    import)
+        fn_import
+        ;;
+    recovery)
+        fn_recovery
+        ;;
+    backup)
+        fn_backup "$@"
+        ;;
+    log)
+        dotfiles log
+        ;;
+    ignore)
+        fn_ignore "$@"
+        ;;
+    remove)
+        if [[ "$1" == "--purge-history" ]]; then
+            shift
+            fn_purge_history "$@"
+        else
+            fn_remove "$@"
+        fi
+        ;;
+    *)
+        echo "Invalid command: $COMMAND"
+        echo "Usage: desk.sh [import|recovery|backup|ignore|remove|log]"
+        exit 1
+        ;;
+esac

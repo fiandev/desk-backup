@@ -1,0 +1,5 @@
+alias desk-import='~/.local/bin/deskbackup import'
+alias desk-recovery='~/.local/bin/deskbackup recovery'
+alias desk-backup='~/.local/bin/deskbackup backup'
+alias desk-ignore='~/.local/bin/deskbackup ignore'
+alias desk-remove='~/.local/bin/deskbackup remove'

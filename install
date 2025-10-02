@@ -1,0 +1,146 @@
+#!/bin/bash
+
+# ==============================================================================
+# DESK-TOOL SETUP SCRIPT
+# This script initializes the dotfiles backup system on your main machine.
+# It USES an EXISTING 'aliases.sh' file located in the same directory.
+# ==============================================================================
+
+# Define colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+CONFIG_REPO="$HOME/.deskbackup-config"
+DOTFILES_DIR="$HOME/.dotfiles"
+
+# --- Main Logic ---
+fn_import() {
+    local REPO_URL=$(cat $CONFIG_REPO)
+    
+    echo "--- Starting Full System Import ---"
+
+    if [ -d "$DOTFILES_DIR" ]; then
+        # echo "⚠️ WARNING: A '.dotfiles' directory already exists. Aborting to prevent overwrite."
+        # echo "   If this is a mistake, please remove it first with 'rm -rf ~/.dotfiles'"
+        rm -rf $DOTFILES_DIR;
+    fi
+
+    # Jika URL tidak diberikan sebagai argumen, minta secara interaktif.
+    if [[ -z "$REPO_URL" ]]; then
+        while [[ -z "$REPO_URL" ]]; do
+            read -p "Please enter the SSH or HTTPS URL for your dotfiles repository: " REPO_URL
+            if [[ -z "$REPO_URL" ]]; then
+                echo "❌ Repository URL cannot be empty. Please try again."
+            fi
+        done
+    fi
+
+    echo "🚚 Cloning dotfiles from '$REPO_URL'..."
+    # Lakukan clone menggunakan URL yang sudah didapatkan
+    git clone --bare "$REPO_URL" "$DOTFILES_DIR"
+    if [ $? -ne 0 ]; then
+        echo "❌ ERROR: Failed to clone repository. Please check the URL and your permissions (SSH keys)."
+        exit 1
+    fi
+
+    echo "⚙️ Checking out configuration files to home directory..."
+    dotfiles checkout -f
+    
+    if [ $? = 0 ]; then
+        echo "✅ Checkout successful."
+    else
+        echo "⚠️ WARNING: Checkout failed even with --force. There might be an issue with the repository."
+    fi
+    
+    dotfiles config --local status.showUntrackedFiles no
+    echo "👍 Basic setup complete. Starting recovery of apps and settings..."
+}
+
+main() {
+    echo -e "${GREEN}--- Starting Desk-Tool Setup ---${NC}"
+
+    # Check if setup already exists
+    if [ -d "$HOME/.dotfiles" ]; then
+        # echo -e "${YELLOW}WARNING: Directory ~/.dotfiles already exists.${NC}"
+        # echo "Setup appears to be already complete. Aborting to prevent overwrite."
+        rm -rf "$HOME/.dotfiles"
+    fi
+
+    # --- Find the script's own directory to locate the existing aliases.sh ---
+    # This makes the script location-aware.
+    SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+    local ALIAS_FILE="$SCRIPT_DIR/aliases.sh"
+
+    # --- CRITICAL: Check if the aliases.sh file actually exists ---
+    if [ ! -f "$ALIAS_FILE" ]; then
+        echo -e "${RED}ERROR: 'aliases.sh' not found in the script directory!${NC}"
+        echo "Please make sure 'aliases.sh' is in the same folder as this setup script."
+        exit 1
+    fi
+    echo -e "${GREEN}-> Found existing 'aliases.sh' at: $ALIAS_FILE${NC}"
+
+    # Initialize Bare Repository
+    echo -e "\n-> Initializing bare repository at ~/.dotfiles..."
+    git init --bare ~/.dotfiles
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}ERROR: Failed to initialize bare repository.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}   ...Done.${NC}"
+
+    # Internal alias function for cleaner commands
+    dotfiles() {
+        /usr/bin/git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" "$@"
+    }
+
+    # Add Remote Origin
+    echo "-> Adding remote origin: $REPO_URL..."
+    dotfiles remote add origin "$REPO_URL"
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}ERROR: Failed to add remote origin. Check your URL.${NC}"
+        rm -rf "$HOME/.dotfiles"
+    fi
+
+    echo -e "${GREEN}   ...Done.${NC}"
+
+    # Set Git config to not show untracked files
+    echo "-> Configuring Git to only track specified files..."
+    dotfiles config --local status.showUntrackedFiles no
+    echo -e "${GREEN}   ...Done.${NC}"
+    
+    # Safely add 'source' command to .bashrc using the detected absolute path
+    echo "-> Adding source line for '$ALIAS_FILE' to ~/.bashrc..."
+    local SOURCE_LINE="source $ALIAS_FILE" 
+    
+    if ! grep -qFx "$SOURCE_LINE" ~/.bashrc; then
+        echo -e "\n# Load Desk-Tool aliases" >> ~/.bashrc
+        echo "$SOURCE_LINE" >> ~/.bashrc
+        echo -e "${GREEN}   ...Successfully added source line to ~/.bashrc.${NC}"
+    else
+        echo -e "${YELLOW}   ...Source line already exists in ~/.bashrc. Skipping.${NC}"
+    fi
+
+    # Jika direktori belum ada, buat dulu
+    mkdir -p ~/.local/bin
+
+    # Pindahkan desk.sh ke sana (ganti /path/asal/desk.sh dengan lokasi file Anda saat ini)
+    cp ./deskbackup ~/.local/bin/
+
+
+    rm $CONFIG_REPO || true;
+    touch $CONFIG_REPO;
+    echo $REPO_URL >> $CONFIG_REPO;
+
+    fn_import
+
+    echo -e "\n${GREEN}--- ✅ SETUP COMPLETE ---${NC}"
+    echo "Please run the following command to activate the new aliases:"
+    echo -e "${YELLOW}source ~/.bashrc${NC}"
+    echo "After that, you can start backing up your files using the aliases from your file."
+}
+
+# Run the main function
+main
