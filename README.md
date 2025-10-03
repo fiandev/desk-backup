@@ -2,11 +2,13 @@
 
 ## A Linux Desktop Configuration Backup & Restore System
 
-A collection of shell scripts to automatically back up, restore, and sync a Linux desktop configuration (dotfiles, applications, and more) using Git. It is designed to speed up the setup process on a new machine or after a fresh OS installation.
+![Preview](./public/preview.png)
+
+A super of shell scripts to automatically back up, restore, and sync a Linux desktop configuration (dotfiles, applications, and more) using Git. It is designed to speed up the setup process on a new machine or after a fresh OS installation.
 
 ## ✨ Features
 
--   **Application List Backup:** Saves a list of installed applications from DNF and Flatpak.
+-   **Application List Backup:** Saves a list of installed applications from DNF, Flatpak and Others Package Managaer.
 -   **File Backup Management with Git:** Uses the efficient "Git Bare Repository" method to track individual configuration files across the home directory.
 -   **Smart Setup Process:** Includes an interactive setup script for initial configuration.
 -   **One-Shot Restore:** A single command to restore an entire work environment on a new machine.
