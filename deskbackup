@@ -19,12 +19,70 @@ BACKUP_DIR="$HOME/.local/share/desk-backup"
 mkdir -p "$BACKUP_DIR"
 
 # --- INTERNAL GIT ALIAS ---
-# This function is the core of the script. It allows running Git commands
-# on the bare repository located in $DOTFILES_DIR while using $HOME as the
-# working directory. This is what makes it possible to track any file
-# in the home directory without initializing a git repo there.
 dotfiles() {
     /usr/bin/git --git-dir="$DOTFILES_DIR" --work-tree="$HOME" "$@"
+}
+
+# ==============================================================================
+# PACKAGE MANAGER FUNCTIONS
+# ==============================================================================
+
+# --- FUNCTION: fn_backup_packages ---
+# Detects the package manager and saves a list of installed packages.
+fn_backup_packages() {
+    echo "📦 Backing up package lists..."
+
+    # DNF (Fedora, CentOS)
+    if command -v dnf >/dev/null 2>&1; then
+        echo "   -> Found dnf. Saving package list."
+        dnf repoquery --userinstalled --qf '%{name}' > "$BACKUP_DIR/packages-dnf.txt"
+    # APT (Debian, Ubuntu)
+    elif command -v apt >/dev/null 2>&1; then
+        echo "   -> Found apt. Saving package list."
+        apt-mark showmanual > "$BACKUP_DIR/packages-apt.txt"
+    # Pacman (Arch Linux)
+    elif command -v pacman >/dev/null 2>&1; then
+        echo "   -> Found pacman. Saving package list."
+        pacman -Qqe > "$BACKUP_DIR/packages-pacman.txt"
+    else
+        echo "   -> No supported package manager (dnf, apt, pacman) found. Skipping."
+    fi
+
+    # Flatpak (Universal)
+    if command -v flatpak >/dev/null 2>&1; then
+        echo "   -> Found flatpak. Saving application list."
+        flatpak list --app --columns=application > "$BACKUP_DIR/packages-flatpak.txt"
+    fi
+}
+
+# --- FUNCTION: fn_restore_packages ---
+# Restores packages from the backup lists if the corresponding manager is available.
+fn_restore_packages() {
+    echo "📦 Restoring applications from backup lists..."
+
+    # DNF
+    if [ -f "$BACKUP_DIR/packages-dnf.txt" ] && command -v dnf >/dev/null 2>&1; then
+        echo "   -> Found dnf list and dnf command. Installing packages..."
+        xargs sudo dnf install -y < "$BACKUP_DIR/packages-dnf.txt"
+    fi
+
+    # APT
+    if [ -f "$BACKUP_DIR/packages-apt.txt" ] && command -v apt >/dev/null 2>&1; then
+        echo "   -> Found apt list and apt command. Installing packages..."
+        xargs sudo apt install -y < "$BACKUP_DIR/packages-apt.txt"
+    fi
+
+    # Pacman
+    if [ -f "$BACKUP_DIR/packages-pacman.txt" ] && command -v pacman >/dev/null 2>&1; then
+        echo "   -> Found pacman list and pacman command. Installing packages..."
+        xargs sudo pacman -S --noconfirm --needed < "$BACKUP_DIR/packages-pacman.txt"
+    fi
+
+    # Flatpak
+    if [ -f "$BACKUP_DIR/packages-flatpak.txt" ] && command -v flatpak >/dev/null 2>&1; then
+        echo "   -> Found flatpak list. Installing applications..."
+        xargs -r flatpak install -y < "$BACKUP_DIR/packages-flatpak.txt"
+    fi
 }
 
 # ==============================================================================
@@ -32,7 +90,6 @@ dotfiles() {
 # ==============================================================================
 
 # --- FUNCTION: desk-import ---
-# To be run on a new machine. Clones the repo and restores everything.
 fn_import() {
     REPO_URL=$(cat "$CONFIG_REPO")
     
@@ -43,7 +100,6 @@ fn_import() {
         rm -rf "$DOTFILES_DIR"
     fi
 
-    # If the repository URL is not found in the config file, ask for it interactively.
     if [ -z "$REPO_URL" ]; then
         while [ -z "$REPO_URL" ]; do
             echo "Please enter the SSH or HTTPS URL for your dotfiles repository: "
@@ -55,7 +111,6 @@ fn_import() {
     fi
 
     echo "🚚 Cloning dotfiles from '$REPO_URL'..."
-    # Clone the bare repository from the provided URL.
     git clone --bare "$REPO_URL" "$DOTFILES_DIR"
     if [ $? -ne 0 ]; then
         echo "❌ ERROR: Failed to clone repository. Please check the URL and your permissions (SSH keys)."
@@ -68,47 +123,24 @@ fn_import() {
     if [ $? = 0 ]; then
         echo "✅ Checkout successful."
     else
-        echo "⚠️ WARNING: Checkout failed. There might be conflicting files. Trying to overwrite..."
-        # The -f flag should handle this, but as a fallback, this is a good place
-        # for a more robust error handling in the future.
+        echo "⚠️ WARNING: Checkout failed. There might be conflicting files."
     fi
     
-    # Configure the local repository to not show untracked files.
-    # This is crucial to avoid `git status` showing every file in the home directory.
     dotfiles config --local status.showUntrackedFiles no
     echo "👍 Basic setup complete. Starting recovery of apps and settings..."
     
-    # Call the recovery function to install applications.
     fn_recovery
 }
 
 # --- FUNCTION: desk-recovery ---
-# Restores files from git and reinstalls applications from the list.
 fn_recovery() {
     echo "🔄 Restoring tracked files from Git..."
     dotfiles checkout -f
-
-    echo "📦 Restoring applications from the backup list..."
-    if [ -f "$BACKUP_DIR/packages-dnf.txt" ]; then
-        echo "Fedora (DNF): Installing packages..."
-        # We use xargs to handle a potentially long list of packages.
-        xargs sudo dnf install -y < "$BACKUP_DIR/packages-dnf.txt"
-    else
-        echo "DNF package list file not found."
-    fi
-    
-    if [ -f "$BACKUP_DIR/packages-flatpak.txt" ]; then
-        echo "Flatpak: Installing applications..."
-        xargs -r flatpak install -y < "$BACKUP_DIR/packages-flatpak.txt"
-    else
-        echo "Flatpak application list file not found."
-    fi
-
+    fn_restore_packages
     echo "✅ Recovery process complete."
 }
 
 # --- FUNCTION: desk-backup ---
-# Adds files/folders to Git, commits, and pushes.
 fn_backup() {
     if [ $# -eq 0 ]; then
         echo "Usage: desk-backup <path/file1> <path/folder2> ..."
@@ -119,16 +151,12 @@ fn_backup() {
     dotfiles add "$@"
     
     echo "📝 Creating commit..."
-    # The commit message includes the name of the last file/folder added.
     dotfiles commit -m "feat: track $(basename "$1")"
     
     echo "🚀 Pushing changes to remote repository..."
     dotfiles push
 
-    # Always back up the package list every time a file is backed up.
-    echo "📦 Backing up the latest application list..."
-    dnf repoquery --userinstalled --qf '%{name}' > "$BACKUP_DIR/packages-dnf.txt"
-    flatpak list --app --columns=application > "$BACKUP_DIR/packages-flatpak.txt"
+    fn_backup_packages
     dotfiles add "$BACKUP_DIR"
     dotfiles commit -m "chore: update package lists"
     dotfiles pull origin master --rebase
@@ -138,7 +166,6 @@ fn_backup() {
 }
 
 # --- FUNCTION: desk-ignore ---
-# Stops tracking a file, but the file remains on the disk.
 fn_ignore() {
     if [ $# -eq 0 ]; then
         echo "Usage: desk-ignore <path/file>"
@@ -155,7 +182,6 @@ fn_ignore() {
 }
 
 # --- FUNCTION: desk-remove ---
-# Deletes a file from the disk & history (safe & advanced versions).
 fn_remove() {
     if [ $# -eq 0 ]; then
         echo "Usage: desk-remove <path/file>"
@@ -168,18 +194,13 @@ fn_remove() {
     dotfiles pull origin master --rebase
     dotfiles push --set-upstream origin master
 
-    echo "✅ File has been deleted. Its history prior to deletion still exists in Git."
-    echo "   To completely purge from history (advanced), use 'desk-remove --purge-history <path/file>'"
+    echo "✅ File has been deleted."
 }
 
 # --- FUNCTION: fn_purge_history ---
-# DANGEROUS: Removes a file from the entire Git history.
 fn_purge_history() {
     echo "⚠️⚠️⚠️ CRITICAL WARNING ⚠️⚠️⚠️"
-    echo "You are about to remove a file from the ENTIRE Git history. This is a dangerous operation,"
-    echo "it rewrites history, and requires a 'force push'."
-    echo "Using the 'git filter-repo' tool is recommended."
-    echo "Are you absolutely sure? (type 'yes' to continue): "
+    echo "You are about to remove a file from the ENTIRE Git history."
     read -r confirmation
     if [ "$confirmation" != "yes" ]; then
         echo "Operation cancelled."
@@ -187,7 +208,6 @@ fn_purge_history() {
     fi
 
     echo "🔥 Purging '$2' from the entire history..."
-    # This requires git-filter-repo to be installed.
     dotfiles filter-repo --path "$2" --invert-paths --force
     
     echo "🚀 Force pushing to rewrite history on the remote repository..."
@@ -201,7 +221,7 @@ fn_purge_history() {
 # ==============================================================================
 
 COMMAND=$1
-shift # Remove the first argument so the rest can be passed to the functions
+shift
 
 case $COMMAND in
     import)
