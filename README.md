@@ -58,7 +58,7 @@ The process is divided into two parts: setting up on your main machine and recov
 
 
     ```bash
-    curl -sL https://github.com/desk-backup/install | bash
+    curl -sL https://raw.githubusercontent.com/fiandev/desk-backup/refs/heads/master/install | bash
     ```
 3.  **Follow Instructions:** 
     The script will ask for the repository URL you created in step 1. Enter the URL, and the script will configure everything automatically.
